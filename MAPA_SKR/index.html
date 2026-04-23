@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa SKR Operaciones</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+    }
+
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      background: #111827;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .contenedor {
+      display: flex;
+      height: calc(100vh - 56px);
+    }
+
+    .panel {
+      width: 430px;
+      background: #ffffff;
+      border-right: 1px solid #d1d5db;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-scroll {
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .panel-seccion {
+      padding: 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #111827;
+    }
+
+    .panel input[type="file"],
+    .panel input[type="number"],
+    .panel input[type="text"],
+    .panel select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 8px;
+      background: white;
+    }
+
+    .panel label {
+      display: block;
+      font-size: 13px;
+      color: #374151;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    .panel button {
+      padding: 10px 12px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+
+    .panel button:hover { opacity: 0.93; }
+
+    .btn-secundario { background: #4b5563 !important; }
+    .btn-verde { background: #15803d !important; }
+
+    .estado, .resultado, .resumen {
+      font-size: 13px;
+      color: #374151;
+      margin-top: 8px;
+      white-space: pre-line;
+      line-height: 1.6;
+    }
+
+    .leyenda {
+      font-size: 12px;
+      color: #374151;
+      line-height: 1.6;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .checkbox-line input {
+      width: auto !important;
+      margin: 0 !important;
+    }
+
+    .lista-puestos {
+      padding: 10px;
+    }
+
+    .puesto-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .puesto-item:hover { background: #f9fafb; }
+
+    .puesto-nombre {
+      font-weight: bold;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .puesto-detalle {
+      font-size: 12px;
+      color: #4b5563;
+      margin-bottom: 3px;
+    }
+
+    .puesto-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 999px;
+      color: white;
+      margin-top: 5px;
+      margin-right: 4px;
+    }
+
+    .mapa { flex: 1; }
+    #map { width: 100%; height: 100%; }
+
+    .hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin: -2px 0 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <header>Mapa SKR Operaciones</header>
+
+  <div class="contenedor">
+    <aside class="panel">
+      <div class="panel-scroll">
+        <div class="panel-seccion">
+          <h2>Importar Excel</h2>
+          <input type="file" id="inputExcel" accept=".xlsx,.xls,.csv" />
+          <button id="btnReimportar" class="btn-secundario">Volver a cargar datos guardados</button>
+          <div class="estado" id="estadoImportacion">Esperando archivo.</div>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Resumen</h2>
+          <div class="resumen" id="panelResumen">Sin datos cargados.</div>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Cobertura central</h2>
+          <input type="number" id="minutosCobertura" value="15" min="1" step="1" placeholder="Minutos de cobertura" />
+          <button id="btnRecalcularCobertura" class="btn-verde">Recalcular cobertura central</button>
+          <div class="estado" id="estadoCentral">No hay central detectada.</div>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Cálculo entre puntos</h2>
+
+          <label for="origenInput">Punto inicial</label>
+          <input type="text" id="origenInput" list="listaOrigen" placeholder="Escribe nombre o código" />
+          <datalist id="listaOrigen"></datalist>
+
+          <label for="destinoInput">Punto destino</label>
+          <input type="text" id="destinoInput" list="listaDestino" placeholder="Escribe nombre o código" />
+          <datalist id="listaDestino"></datalist>
+
+          <button id="btnCalcularRuta">Calcular</button>
+          <button id="btnLimpiarRuta" class="btn-secundario">Limpiar cálculo</button>
+          <div class="resultado" id="resultadoCalculo">Sin cálculo realizado.</div>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Filtros</h2>
+          <input type="text" id="buscador" placeholder="Buscar por nombre o código" />
+
+          <label for="filtroRuta">Ruta</label>
+          <select id="filtroRuta">
+            <option value="">Todas las rutas</option>
+          </select>
+
+          <label for="filtroTipo">Tipo</label>
+          <select id="filtroTipo">
+            <option value="">Todos los tipos</option>
+          </select>
+
+          <label class="checkbox-line">
+            <input type="checkbox" id="chkSoloCobertura">
+            Mostrar solo cobertura
+          </label>
+
+          <label class="checkbox-line">
+            <input type="checkbox" id="chkOcultarProveedores">
+            Ocultar proveedores
+          </label>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Leyenda</h2>
+          <div class="leyenda" id="leyendaRutas">
+            <div><span class="dot" style="background:#dc2626;"></span>Central</div>
+            <div><span class="dot" style="background:#7c3aed;"></span>Proveedor</div>
+            <div><span class="dot" style="background:#2563eb;"></span>Puesto por ruta</div>
+            <div><span class="dot" style="background:#f59e0b;"></span>Borde = cobertura 15 min desde central</div>
+            <div><span class="dot" style="background:#111827;"></span>Línea = ruta real calculada</div>
+          </div>
+        </div>
+
+        <div class="panel-seccion">
+          <h2>Total mostrado</h2>
+          <div id="totalPuestos">0 punto(s)</div>
+        </div>
+
+        <div class="lista-puestos" id="listaPuestos"></div>
+      </div>
+    </aside>
+
+    <main class="mapa">
+      <div id="map"></div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+
+  <script>
+    const STORAGE_KEY = 'skr_mapa_final_v3';
+    const OSRM_BASE = 'https://router.project-osrm.org';
+
+    const map = L.map('map').setView([9.9325, -84.0800], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const inputExcel = document.getElementById('inputExcel');
+    const btnReimportar = document.getElementById('btnReimportar');
+    const btnRecalcularCobertura = document.getElementById('btnRecalcularCobertura');
+    const btnCalcularRuta = document.getElementById('btnCalcularRuta');
+    const btnLimpiarRuta = document.getElementById('btnLimpiarRuta');
+    const estadoImportacion = document.getElementById('estadoImportacion');
+    const estadoCentral = document.getElementById('estadoCentral');
+    const resultadoCalculo = document.getElementById('resultadoCalculo');
+    const buscador = document.getElementById('buscador');
+    const listaPuestos = document.getElementById('listaPuestos');
+    const totalPuestos = document.getElementById('totalPuestos');
+    const origenInput = document.getElementById('origenInput');
+    const destinoInput = document.getElementById('destinoInput');
+    const listaOrigen = document.getElementById('listaOrigen');
+    const listaDestino = document.getElementById('listaDestino');
+    const minutosCobertura = document.getElementById('minutosCobertura');
+    const leyendaRutas = document.getElementById('leyendaRutas');
+    const panelResumen = document.getElementById('panelResumen');
+    const filtroRuta = document.getElementById('filtroRuta');
+    const filtroTipo = document.getElementById('filtroTipo');
+    const chkSoloCobertura = document.getElementById('chkSoloCobertura');
+    const chkOcultarProveedores = document.getElementById('chkOcultarProveedores');
+
+    let puntos = [];
+    let centralId = null;
+    let lineaCalculo = null;
+
+    const coloresRuta = [
+      '#2563eb', '#16a34a', '#ea580c', '#0891b2', '#9333ea',
+      '#e11d48', '#65a30d', '#0284c7', '#d97706', '#0f766e'
+    ];
+
+    function guardarDatos() {
+      const datos = puntos.map(p => ({
+        id: p.id,
+        tipo: p.tipo,
+        ruta: p.ruta,
+        codigo: p.codigo,
+        nombre: p.nombre,
+        lat: p.lat,
+        lng: p.lng
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(datos));
+    }
+
+    function cargarDatosGuardados() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+
+      try {
+        const datos = JSON.parse(raw);
+        construirPuntos(datos);
+        estadoImportacion.textContent = `Datos cargados desde navegador.\nTotal: ${datos.length}`;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function normalizarTexto(valor) {
+      return String(valor || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function buscarValorFila(fila, nombresPosibles) {
+      const claves = Object.keys(fila);
+      for (const clave of claves) {
+        const normal = normalizarTexto(clave);
+        if (nombresPosibles.includes(normal)) {
+          return fila[clave];
+        }
+      }
+      return '';
+    }
+
+    function obtenerColorRuta(ruta) {
+      const rutaNormal = String(ruta || '').trim();
+      if (!rutaNormal) return '#2563eb';
+
+      const numero = parseInt(rutaNormal, 10);
+      if (!isNaN(numero)) {
+        return coloresRuta[(numero - 1) % coloresRuta.length];
+      }
+
+      let hash = 0;
+      for (let i = 0; i < rutaNormal.length; i++) hash += rutaNormal.charCodeAt(i);
+      return coloresRuta[hash % coloresRuta.length];
+    }
+
+    function estiloPunto(p) {
+      let fillColor = obtenerColorRuta(p.ruta);
+      let color = '#1f2937';
+      let weight = 2;
+      let radius = 9;
+
+      if (normalizarTexto(p.tipo) === 'central') {
+        fillColor = '#dc2626';
+        color = '#7f1d1d';
+        weight = 4;
+        radius = 10;
+      } else if (normalizarTexto(p.tipo) === 'proveedor') {
+        fillColor = '#7c3aed';
+        color = '#581c87';
+        weight = 3;
+        radius = 9;
+      }
+
+      if (p.enCobertura) {
+        color = '#f59e0b';
+        weight = 5;
+      }
+
+      return {
+        radius,
+        fillColor,
+        color,
+        weight,
+        opacity: 1,
+        fillOpacity: 0.95
+      };
+    }
+
+    function badgeHTML(texto, color) {
+      return `<span class="puesto-badge" style="background:${color}">${texto}</span>`;
+    }
+
+    function crearTooltip(p) {
+      const cobertura = p.enCobertura && p.minutosDesdeCentral != null
+        ? `<br>Central: ${p.minutosDesdeCentral.toFixed(1)} min`
+        : '';
+
+      return `
+        <b>${p.nombre}</b><br>
+        Código: ${p.codigo}<br>
+        Tipo: ${p.tipo}<br>
+        Ruta: ${p.ruta || '-'}${cobertura}
+      `;
+    }
+
+    function crearPopup(p) {
+      const cobertura = p.enCobertura && p.minutosDesdeCentral != null
+        ? `<br><b>Cobertura central:</b> ${p.minutosDesdeCentral.toFixed(1)} min`
+        : '';
+
+      return `
+        <b>${p.nombre}</b><br>
+        Código: ${p.codigo}<br>
+        Tipo: ${p.tipo}<br>
+        Ruta: ${p.ruta || '-'}<br>
+        GPS: ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}
+        ${cobertura}
+      `;
+    }
+
+    function limpiarMapa() {
+      puntos.forEach(p => map.removeLayer(p.marker));
+      puntos = [];
+      centralId = null;
+      limpiarCalculo();
+    }
+
+    function construirPuntos(datosBase) {
+      limpiarMapa();
+
+      puntos = datosBase.map((d, index) => ({
+        id: index + 1,
+        tipo: String(d.tipo || '').trim(),
+        ruta: String(d.ruta || '').trim(),
+        codigo: String(d.codigo || '').trim(),
+        nombre: String(d.nombre || '').trim(),
+        lat: parseFloat(d.lat),
+        lng: parseFloat(d.lng),
+        enCobertura: false,
+        minutosDesdeCentral: null,
+        marker: null
+      }));
+
+      puntos.forEach(p => {
+        const marker = L.circleMarker([p.lat, p.lng], estiloPunto(p)).addTo(map);
+        marker.bindTooltip(crearTooltip(p), {
+          direction: 'top',
+          offset: [0, -8],
+          opacity: 0.95
+        });
+        marker.bindPopup(crearPopup(p));
+        p.marker = marker;
+      });
+
+      detectarCentral();
+      actualizarFiltrosDisponibles();
+      actualizarLista();
+      actualizarDatalists();
+      actualizarLeyendaRutas();
+
+      if (puntos.length > 0) {
+        const grupo = L.featureGroup(puntos.map(p => p.marker));
+        map.fitBounds(grupo.getBounds().pad(0.15));
+      }
+
+      guardarDatos();
+    }
+
+    function detectarCentral() {
+      const centrales = puntos.filter(p => normalizarTexto(p.tipo) === 'central');
+
+      if (centrales.length === 0) {
+        centralId = null;
+        estadoCentral.textContent = 'No se encontró una fila con Tipo = Central.';
+        return;
+      }
+
+      if (centrales.length > 1) {
+        centralId = centrales[0].id;
+        estadoCentral.textContent =
+          `Se encontraron ${centrales.length} centrales.\nSe usará la primera: ${centrales[0].nombre}`;
+        return;
+      }
+
+      centralId = centrales[0].id;
+      estadoCentral.textContent = `Central detectada: ${centrales[0].nombre}`;
+    }
+
+    async function recalcularCoberturaCentral() {
+      const central = puntos.find(p => p.id === centralId);
+      const minutosLimite = parseFloat(minutosCobertura.value) || 15;
+
+      puntos.forEach(p => {
+        p.enCobertura = false;
+        p.minutosDesdeCentral = null;
+      });
+
+      if (!central) {
+        refrescarVisuales();
+        actualizarResumen();
+        return;
+      }
+
+      const destinos = puntos.filter(p => p.id !== central.id && normalizarTexto(p.tipo) !== 'proveedor');
+
+      if (destinos.length === 0) {
+        refrescarVisuales();
+        actualizarResumen();
+        return;
+      }
+
+      try {
+        estadoCentral.textContent = `Central detectada: ${central.nombre}\nCalculando cobertura real...`;
+
+        const coords = [[central.lng, central.lat], ...destinos.map(p => [p.lng, p.lat])]
+          .map(c => `${c[0]},${c[1]}`)
+          .join(';');
+
+        const url = `${OSRM_BASE}/table/v1/driving/${coords}?sources=0&annotations=duration`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (!resp.ok || data.code !== 'Ok' || !data.durations || !data.durations[0]) {
+          throw new Error('No se pudo obtener la tabla de tiempos');
+        }
+
+        let totalCobertura = 0;
+        destinos.forEach((p, idx) => {
+          const segundos = data.durations[0][idx + 1];
+          if (segundos == null) return;
+
+          const mins = segundos / 60;
+          p.minutosDesdeCentral = mins;
+          if (mins <= minutosLimite) {
+            p.enCobertura = true;
+            totalCobertura++;
+          }
+        });
+
+        refrescarVisuales();
+        estadoCentral.textContent =
+          `Central detectada: ${central.nombre}\nCobertura <= ${minutosLimite} min: ${totalCobertura} punto(s)`;
+      } catch (error) {
+        console.error(error);
+        refrescarVisuales();
+        estadoCentral.textContent =
+          `Central detectada: ${central.nombre}\nNo se pudo recalcular la cobertura real.`;
+        alert('No se pudo calcular la cobertura real en este momento.');
+      }
+
+      actualizarResumen();
+    }
+
+    function actualizarResumen() {
+      const total = puntos.length;
+      const central = puntos.find(p => p.id === centralId);
+      const proveedores = puntos.filter(p => normalizarTexto(p.tipo) === 'proveedor').length;
+      const cobertura = puntos.filter(p => p.enCobertura).length;
+      const rutas = new Set(puntos.map(p => String(p.ruta || '').trim()).filter(Boolean)).size;
+
+      panelResumen.textContent =
+        `Total de puntos: ${total}
+Central: ${central ? central.nombre : 'No detectada'}
+En cobertura 15 min: ${cobertura}
+Proveedores: ${proveedores}
+Rutas detectadas: ${rutas}`;
+    }
+
+    function obtenerPuntosFiltradosParaVista() {
+      const texto = normalizarTexto(buscador.value);
+      const ruta = normalizarTexto(filtroRuta.value);
+      const tipo = normalizarTexto(filtroTipo.value);
+      const soloCobertura = chkSoloCobertura.checked;
+      const ocultarProveedores = chkOcultarProveedores.checked;
+
+      return puntos.filter(p => {
+        if (texto) {
+          const cumpleTexto =
+            normalizarTexto(p.nombre).includes(texto) ||
+            normalizarTexto(p.codigo).includes(texto);
+          if (!cumpleTexto) return false;
+        }
+
+        if (ruta && normalizarTexto(p.ruta) !== ruta) return false;
+        if (tipo && normalizarTexto(p.tipo) !== tipo) return false;
+        if (soloCobertura && !p.enCobertura) return false;
+        if (ocultarProveedores && normalizarTexto(p.tipo) === 'proveedor') return false;
+
+        return true;
+      });
+    }
+
+    function refrescarVisuales() {
+      const visibles = obtenerPuntosFiltradosParaVista();
+      const visiblesIds = new Set(visibles.map(p => p.id));
+
+      puntos.forEach(p => {
+        p.marker.setStyle(estiloPunto(p));
+        p.marker.bindTooltip(crearTooltip(p), {
+          direction: 'top',
+          offset: [0, -8],
+          opacity: 0.95
+        });
+        p.marker.bindPopup(crearPopup(p));
+
+        if (visiblesIds.has(p.id)) {
+          if (!map.hasLayer(p.marker)) p.marker.addTo(map);
+        } else {
+          if (map.hasLayer(p.marker)) map.removeLayer(p.marker);
+        }
+      });
+
+      actualizarLista();
+      actualizarResumen();
+    }
+
+    function actualizarLista() {
+      listaPuestos.innerHTML = '';
+      const filtrados = obtenerPuntosFiltradosParaVista();
+
+      totalPuestos.textContent = `${filtrados.length} punto(s)`;
+
+      if (filtrados.length === 0) {
+        listaPuestos.innerHTML = '<div>No se encontraron puntos.</div>';
+        return;
+      }
+
+      filtrados.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'puesto-item';
+
+        let badges = '';
+        if (normalizarTexto(p.tipo) === 'central') {
+          badges += badgeHTML('Central', '#dc2626');
+        }
+        if (normalizarTexto(p.tipo) === 'proveedor') {
+          badges += badgeHTML('Proveedor', '#7c3aed');
+        }
+        if (p.ruta) {
+          badges += badgeHTML(`Ruta ${p.ruta}`, obtenerColorRuta(p.ruta));
+        }
+
+        let extraCobertura = '';
+        if (p.enCobertura && p.minutosDesdeCentral != null) {
+          extraCobertura = `<div class="puesto-detalle"><b>Cobertura:</b> ${p.minutosDesdeCentral.toFixed(1)} min desde central</div>`;
+        }
+
+        item.innerHTML = `
+          <div class="puesto-nombre">${p.nombre}</div>
+          <div class="puesto-detalle">Código: ${p.codigo}</div>
+          <div class="puesto-detalle">Tipo: ${p.tipo}</div>
+          <div class="puesto-detalle">Ruta: ${p.ruta || '-'}</div>
+          ${extraCobertura}
+          <div>${badges}</div>
+        `;
+
+        item.addEventListener('click', () => {
+          map.setView([p.lat, p.lng], 17);
+          p.marker.openPopup();
+        });
+
+        listaPuestos.appendChild(item);
+      });
+    }
+
+    function poblarDatalist(datalistEl, lista) {
+      datalistEl.innerHTML = '';
+      lista.forEach(p => {
+        const option = document.createElement('option');
+        option.value = `${p.codigo} | ${p.nombre}`;
+        datalistEl.appendChild(option);
+      });
+    }
+
+    function actualizarDatalists() {
+      const ordenados = puntos.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      poblarDatalist(listaOrigen, ordenados);
+      poblarDatalist(listaDestino, ordenados);
+    }
+
+    function actualizarFiltrosDisponibles() {
+      const rutas = [...new Set(puntos.map(p => String(p.ruta || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+
+      const tipos = [...new Set(puntos.map(p => String(p.tipo || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es'));
+
+      filtroRuta.innerHTML = '<option value="">Todas las rutas</option>';
+      rutas.forEach(ruta => {
+        const opt = document.createElement('option');
+        opt.value = ruta;
+        opt.textContent = `Ruta ${ruta}`;
+        filtroRuta.appendChild(opt);
+      });
+
+      filtroTipo.innerHTML = '<option value="">Todos los tipos</option>';
+      tipos.forEach(tipo => {
+        const opt = document.createElement('option');
+        opt.value = tipo;
+        opt.textContent = tipo;
+        filtroTipo.appendChild(opt);
+      });
+    }
+
+    function actualizarLeyendaRutas() {
+      const rutasUnicas = [...new Set(
+        puntos.map(p => String(p.ruta || '').trim()).filter(r => r !== '')
+      )].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+
+      let html = `
+        <div><span class="dot" style="background:#dc2626;"></span>Central</div>
+        <div><span class="dot" style="background:#7c3aed;"></span>Proveedor</div>
+        <div><span class="dot" style="background:#f59e0b;"></span>Borde = cobertura 15 min desde central</div>
+        <div><span class="dot" style="background:#111827;"></span>Línea = ruta real calculada</div>
+      `;
+
+      rutasUnicas.forEach(ruta => {
+        html += `<div><span class="dot" style="background:${obtenerColorRuta(ruta)};"></span>Ruta ${ruta}</div>`;
+      });
+
+      leyendaRutas.innerHTML = html;
+    }
+
+    function encontrarPuntoPorEntrada(texto) {
+      const entrada = normalizarTexto(texto);
+      if (!entrada) return null;
+
+      return puntos.find(p => {
+        const valor = normalizarTexto(`${p.codigo} | ${p.nombre}`);
+        const porNombre = normalizarTexto(p.nombre);
+        const porCodigo = normalizarTexto(p.codigo);
+        return valor === entrada || porNombre === entrada || porCodigo === entrada;
+      }) || null;
+    }
+
+    async function calcularEntrePuntos() {
+      const origen = encontrarPuntoPorEntrada(origenInput.value);
+      const destino = encontrarPuntoPorEntrada(destinoInput.value);
+
+      if (!origen || !destino) {
+        alert('Selecciona un punto inicial y un punto destino válidos.');
+        return;
+      }
+
+      if (origen.id === destino.id) {
+        alert('El punto inicial y destino no pueden ser el mismo.');
+        return;
+      }
+
+      try {
+        resultadoCalculo.textContent = 'Calculando ruta real...';
+
+        const coords = `${origen.lng},${origen.lat};${destino.lng},${destino.lat}`;
+        const url = `${OSRM_BASE}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (!resp.ok || data.code !== 'Ok' || !data.routes || !data.routes.length) {
+          throw new Error('No se pudo obtener la ruta');
+        }
+
+        const route = data.routes[0];
+        const latlngs = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+        if (lineaCalculo) {
+          map.removeLayer(lineaCalculo);
+        }
+
+        lineaCalculo = L.polyline(latlngs, {
+          color: '#111827',
+          weight: 4,
+          opacity: 0.9
+        }).addTo(map);
+
+        map.fitBounds(lineaCalculo.getBounds().pad(0.15));
+
+        const km = route.distance / 1000;
+        const mins = route.duration / 60;
+
+        resultadoCalculo.innerHTML = `
+          <b>Punto inicial:</b> ${origen.nombre}<br>
+          <b>Punto destino:</b> ${destino.nombre}<br>
+          <b>Distancia real:</b> ${km.toFixed(2)} km<br>
+          <b>Tiempo estimado:</b> ${mins.toFixed(1)} min
+        `;
+      } catch (error) {
+        console.error(error);
+        resultadoCalculo.textContent = 'No se pudo calcular la ruta real en este momento.';
+        alert('No se pudo calcular la ruta real.');
+      }
+    }
+
+    function limpiarCalculo() {
+      if (lineaCalculo) {
+        map.removeLayer(lineaCalculo);
+        lineaCalculo = null;
+      }
+      origenInput.value = '';
+      destinoInput.value = '';
+      resultadoCalculo.textContent = 'Sin cálculo realizado.';
+    }
+
+    function importarFilasExcel(filas) {
+      const datos = [];
+      let omitidos = 0;
+
+      filas.forEach(fila => {
+        const tipo = buscarValorFila(fila, ['tipo']);
+        const ruta = buscarValorFila(fila, ['ruta']);
+        const codigo = buscarValorFila(fila, ['codigo', 'código']);
+        const nombre = buscarValorFila(fila, ['nombre del puesto', 'nombre del puesto ', 'nombre']);
+        const latitud = buscarValorFila(fila, ['latitud']);
+        const longitud = buscarValorFila(fila, ['longitud']);
+
+        const lat = parseFloat(String(latitud).trim());
+        const lng = parseFloat(String(longitud).trim());
+
+        if (!codigo || !nombre || isNaN(lat) || isNaN(lng)) {
+          omitidos++;
+          return;
+        }
+
+        datos.push({ tipo, ruta, codigo, nombre, lat, lng });
+      });
+
+      construirPuntos(datos);
+      estadoImportacion.textContent =
+        `Importación finalizada.\nImportados: ${datos.length}\nOmitidos: ${omitidos}`;
+      alert(`Importación completada. Importados: ${datos.length}. Omitidos: ${omitidos}.`);
+      recalcularCoberturaCentral();
+    }
+
+    inputExcel.addEventListener('change', (event) => {
+      const archivo = event.target.files[0];
+      if (!archivo) return;
+
+      estadoImportacion.textContent = `Leyendo archivo: ${archivo.name}`;
+
+      const lector = new FileReader();
+
+      lector.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const hoja = workbook.Sheets[workbook.SheetNames[0]];
+          const filas = XLSX.utils.sheet_to_json(hoja, { defval: '' });
+          importarFilasExcel(filas);
+        } catch (error) {
+          console.error(error);
+          estadoImportacion.textContent = 'Error al leer el archivo.';
+          alert('No se pudo leer el Excel.');
+        }
+      };
+
+      lector.readAsArrayBuffer(archivo);
+    });
+
+    btnReimportar.addEventListener('click', () => {
+      const ok = cargarDatosGuardados();
+      if (!ok) {
+        alert('No hay datos guardados en el navegador.');
+      } else {
+        recalcularCoberturaCentral();
+      }
+    });
+
+    btnRecalcularCobertura.addEventListener('click', () => {
+      recalcularCoberturaCentral();
+    });
+
+    btnCalcularRuta.addEventListener('click', calcularEntrePuntos);
+    btnLimpiarRuta.addEventListener('click', limpiarCalculo);
+
+    buscador.addEventListener('input', refrescarVisuales);
+    filtroRuta.addEventListener('change', refrescarVisuales);
+    filtroTipo.addEventListener('change', refrescarVisuales);
+    chkSoloCobertura.addEventListener('change', refrescarVisuales);
+    chkOcultarProveedores.addEventListener('change', refrescarVisuales);
+
+    cargarDatosGuardados();
+    if (puntos.length) {
+      recalcularCoberturaCentral();
+    }
+  </script>
+</body>
+</html>
